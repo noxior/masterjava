@@ -9,9 +9,6 @@ import ru.javaops.masterjava.xml.util.JaxbParser;
 import ru.javaops.masterjava.xml.util.Schemas;
 import ru.javaops.masterjava.xml.util.StaxStreamProcessor;
 
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
 import javax.xml.transform.*;
 import javax.xml.transform.stream.StreamResult;
 import javax.xml.transform.stream.StreamSource;
@@ -36,80 +33,33 @@ public class MainXml {
 //        Set<User> users = parseByJaxb(projectName, payloadUrl);
 //        users.forEach(System.out::println);
 //
-//        Set<User> usersEmails = parseByStax(projectName, payloadUrl);
-//        usersEmails.forEach(e -> System.out.println(e.getEmail() + " " + e.getValue()));
+        Set<User> usersEmails = parseByStax(projectName, payloadUrl);
+        usersEmails.forEach(e -> System.out.println(e.getEmail() + " " + e.getValue()));
 
-        createHtml();
+//        createHtml();
     }
 
     private static Set<User> parseByStax(String projectName, URL payloadUrl) throws Exception {
         Set<User> users = new HashSet<>();
         Set<String> groups = new HashSet<>();
-        try (StaxStreamProcessor processor =
-                     new StaxStreamProcessor(payloadUrl.openStream())) {
-            XMLStreamReader reader = processor.getReader();
-            for (int event = reader.next(); event != XMLStreamConstants.END_DOCUMENT; event = reader.next()) {
-                switch (event) {
-                    case XMLStreamConstants.START_ELEMENT:
-                        if (projectName.equals(reader.getAttributeValue(0))) {
-                            groups = getGroups(reader);
-                        }
-                        if ("Users".equals(reader.getName().getLocalPart())) {
-                            users = getUsers(reader, groups);
-                        }
-                        break;
-                    default:
-                        break;
+        try (StaxStreamProcessor processor = new StaxStreamProcessor(payloadUrl.openStream())) {
+            while (processor.startElement("Project", "Projects")) {
+                if (projectName.equals(processor.getAttribute("name"))) {
+                    while (processor.startElement("Group", "Project")) {
+                        groups.add(processor.getAttribute("name"));
+                    }
                 }
             }
-        }
-        return users;
-    }
-
-    private static Set<String> getGroups(XMLStreamReader reader) throws XMLStreamException {
-        Set<String> groups = new HashSet<>();
-        for (int event = reader.next(); event != XMLStreamConstants.END_DOCUMENT; event = reader.next()) {
-            switch (event) {
-                case XMLStreamConstants.START_ELEMENT:
-                    if ("Group".equals(reader.getLocalName())) {
-                        groups.add(reader.getAttributeValue(0));
+            while (processor.startElement("User", "Users")) {
+                Optional<String> groupRefs = Optional.ofNullable(processor.getAttribute("groupRefs"));
+                if (groupRefs.isPresent()) {
+                    if (!Collections.disjoint(groups, Arrays.asList(groupRefs.get().split(" ")))) {
+                        User user = new User();
+                        user.setEmail(processor.getAttribute("email"));
+                        user.setValue(processor.getText());
+                        users.add(user);
                     }
-                    break;
-                case XMLStreamConstants.END_ELEMENT:
-                    if ("Project".equals(reader.getLocalName())) {
-                        return groups;
-                    }
-                default:
-                    break;
-            }
-        }
-        return groups;
-    }
-
-    private static Set<User> getUsers(XMLStreamReader reader, Set<String> groups) throws XMLStreamException {
-        HashSet<User> users = new HashSet<>();
-        for (int event = reader.next(); event != XMLStreamConstants.END_DOCUMENT; event = reader.next()) {
-            switch (event) {
-                case XMLStreamConstants.START_ELEMENT:
-                    if ("User".equals(reader.getLocalName())) {
-                        try {
-                            if (!Collections.disjoint(groups, Arrays.asList(reader.getAttributeValue(3).split(" ")))) {
-                                User user = new User();
-                                user.setEmail(reader.getAttributeValue(2));
-                                user.setValue(reader.getElementText());
-                                users.add(user);
-                            }
-                        } catch (Exception e) {
-                            System.out.println("This user don't have projects");
-                        }
-                    }
-                    break;
-                case XMLStreamConstants.END_ELEMENT:
-                    if ("Users".equals(reader.getLocalName())) {
-                        return users;
-                    }
-                default:
-                    break;
+                }
             }
         }
         return users;
